@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeBrief, createLaunchPlan, REQUIRED_FIELDS } from './agentLogic.js';
+import { analyzeBrief, createLaunchPlan, getActiveAgent, REQUIRED_FIELDS } from './agentLogic.js';
 
 describe('ad launch agent logic', () => {
   it('asks follow-up questions when the user has not provided any required launch information', () => {
@@ -29,5 +29,14 @@ describe('ad launch agent logic', () => {
     expect(plan.steps[0]).toContain('解析产品');
     expect(plan.channels).toEqual(['微信销售', 'App 内广告']);
     expect(plan.confirmButton).toBe('确认并开始投放');
+  });
+
+  it('selects the active agent according to the conversation phase', () => {
+    const empty = analyzeBrief('');
+    const ready = analyzeBrief('产品是智能净水器，有图片和视频素材，目标促进成交，投微信销售和App内广告，用户点击后进入微信私聊。');
+
+    expect(getActiveAgent(empty).name).toBe('用户建模智能体');
+    expect(getActiveAgent(ready).name).toBe('广告匹配与 AI 销售智能体');
+    expect(getActiveAgent(ready, 'review').name).toBe('数据分析与系统迭代智能体');
   });
 });

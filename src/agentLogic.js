@@ -125,3 +125,27 @@ export function createLaunchPlan(extracted) {
     confirmButton: '确认并开始投放'
   };
 }
+
+export function getActiveAgent(analysis, phase = 'collecting') {
+  if (phase === 'review') {
+    return {
+      name: '数据分析与系统迭代智能体',
+      description: '监控投放数据、识别异常、生成优化建议与复盘结论。',
+      tone: 'blue'
+    };
+  }
+
+  if (analysis?.ready) {
+    return {
+      name: '广告匹配与 AI 销售智能体',
+      description: '匹配广告素材、触达渠道、销售话术和二次确认方案。',
+      tone: 'orange'
+    };
+  }
+
+  return {
+    name: '用户建模智能体',
+    description: '理解产品、目标、素材、交互与渠道，补齐投放必填信息。',
+    tone: 'green'
+  };
+}

@@ -29,7 +29,7 @@ import {
   UploadCloud,
   Zap
 } from 'lucide-react';
-import { analyzeBrief, createLaunchPlan, REQUIRED_FIELDS } from './agentLogic.js';
+import { analyzeBrief, createLaunchPlan, getActiveAgent, REQUIRED_FIELDS } from './agentLogic.js';
 import './styles.css';
 
 const reviewTrend = [
@@ -87,43 +87,34 @@ const quickPrompts = [
   '我还没有素材，先帮我列出投放前必须补齐的信息。'
 ];
 
-const agentModules = [
+const agentRoster = [
   {
-    name: 'Agent 1',
-    title: '用户建模智能体',
+    name: '用户建模智能体',
     color: 'green',
-    items: ['画像建模', '意图识别', '商机预测', '转化概率'],
-    output: '用户画像 / 商业标签 / 价值评分'
+    description: '理解产品、人群和缺失信息'
   },
   {
-    name: 'Agent 2',
-    title: '广告匹配与 AI 销售智能体',
+    name: '广告匹配与 AI 销售智能体',
     color: 'orange',
-    items: ['广告召回', '素材生成', '渠道匹配', '销售对话'],
-    output: '推荐广告 / 个性化素材 / 销售策略'
+    description: '生成投放方案和销售话术'
   },
   {
-    name: 'Agent 3',
-    title: '数据分析与系统迭代智能体',
+    name: '数据分析与系统迭代智能体',
     color: 'blue',
-    items: ['全链路分析', 'A/B 实验', '策略评估', '迭代优化'],
-    output: '优化建议 / 模型反馈 / 策略版本'
+    description: '复盘数据并持续优化'
   }
 ];
-
-const harnessCapabilities = ['任务编排与路由', '上下文管理', '工具调用管理', '权限与安全控制', '验证与评估', '观察与可观测性', '记忆与状态管理', '反馈与学习闭环'];
-const dataInputs = ['学习行为数据', '对话数据', '手机号授权数据', '广告主数据', '商品/服务库', '历史转化数据'];
-const toolServices = ['数据查询', '广告库', '商品库', '图像生成', '文案生成', 'CRM/客服', '支付/订单', 'A/B 测试', '消息通知'];
-const businessOutputs = ['个性化广告', 'AI 销售对话', '转化结果', '订单/支付', '用户反馈'];
 
 const starterMessages = [
   {
     role: 'agent',
+    agent: '用户建模智能体',
     type: 'intro',
     text: '我是云梯广告投放智能体。你不用进后台配一堆表单，直接告诉我要卖什么、目标是什么、素材有哪些、希望用户点击后做什么、投哪些渠道。我会缺什么问什么，信息齐后生成方案，但必须你二次确认后才会开始投放。'
   },
   {
     role: 'agent',
+    agent: '用户建模智能体',
     type: 'question',
     text: REQUIRED_FIELDS[0].question
   }
@@ -144,6 +135,8 @@ function App() {
 
   const analysis = useMemo(() => analyzeBrief('', { ...brief, materials }), [brief, materials]);
   const completion = Math.round(((REQUIRED_FIELDS.length - analysis.missing.length) / REQUIRED_FIELDS.length) * 100);
+  const activeAgent = getActiveAgent(analysis);
+  const reviewAgent = getActiveAgent(analysis, 'review');
 
   const pushMessages = (nextMessages) => {
     setMessages((current) => [...current, ...nextMessages]);
@@ -170,6 +163,7 @@ function App() {
       pushMessages([
         {
           role: 'agent',
+          agent: getActiveAgent(next).name,
           type: 'plan',
           text: '信息已经够了。我生成了一个待确认投放方案，确认后才会真正开始投放。',
           plan
@@ -181,6 +175,7 @@ function App() {
     pushMessages([
       {
         role: 'agent',
+        agent: getActiveAgent(next).name,
         type: 'question',
         text: next.nextQuestion
       }
@@ -194,7 +189,7 @@ function App() {
     setBrief(next.extracted);
     pushMessages([
       { role: 'user', text: `已上传${type}素材` },
-      { role: 'agent', text: next.ready ? '素材已接收，必填信息已齐。我可以生成投放方案了。' : next.nextQuestion }
+      { role: 'agent', agent: getActiveAgent(next).name, text: next.ready ? '素材已接收，必填信息已齐。我可以生成投放方案了。' : next.nextQuestion }
     ]);
     if (next.ready) setPendingPlan(createLaunchPlan(next.extracted));
   };
@@ -216,7 +211,7 @@ function App() {
     setCampaigns((current) => [newCampaign, ...current]);
     setSelectedCampaign(newCampaign);
     setPendingPlan(null);
-    pushMessages([{ role: 'agent', type: 'success', text: `已确认。${newCampaign.title} 已开始投放，我会持续观察数据并在复盘区更新。` }]);
+    pushMessages([{ role: 'agent', agent: reviewAgent.name, type: 'success', text: `已确认。${newCampaign.title} 已开始投放，我会持续观察数据并在复盘区更新。` }]);
     showToast('投放已开始，右侧复盘区已加入新任务。');
   };
 
@@ -245,7 +240,7 @@ function App() {
             <strong>云梯科技</strong>
             <span>YUN TI TECHNOLOGY</span>
           </div>
-          <div className="agent-status"><span />广告投放智能体在线</div>
+          <div className={`agent-status ${activeAgent.tone}`}><span />当前：{activeAgent.name}</div>
         </header>
 
         <div className="hero-copy">
@@ -265,13 +260,13 @@ function App() {
           })}
         </div>
 
-        <ArchitectureBoard completion={completion} />
+        <AgentRail activeAgent={activeAgent} />
 
         <section className="chat-window">
           <div className="message-list" ref={scrollRef}>
             {messages.map((message, index) => <Message key={`${message.role}-${index}`} message={message} onConfirm={confirmLaunch} />)}
             {pendingPlan && !messages.some((message) => message.plan === pendingPlan) && (
-              <Message message={{ role: 'agent', type: 'plan', text: '方案已生成，等待二次确认。', plan: pendingPlan }} onConfirm={confirmLaunch} />
+              <Message message={{ role: 'agent', agent: '广告匹配与 AI 销售智能体', type: 'plan', text: '方案已生成，等待二次确认。', plan: pendingPlan }} onConfirm={confirmLaunch} />
             )}
           </div>
 
@@ -326,6 +321,7 @@ function App() {
             </div>
             <StatusBadge status={selectedCampaign.status} />
           </div>
+          <div className="review-agent-chip"><Sparkles size={15} />{reviewAgent.name} 正在复盘这组数据</div>
           <div className="kpi-grid">
             <Kpi label="消耗" value={`¥${money.format(selectedCampaign.spend)}`} />
             <Kpi label="预算" value={`¥${money.format(selectedCampaign.budget)}`} />
@@ -398,52 +394,18 @@ function App() {
   );
 }
 
-function ArchitectureBoard({ completion }) {
+function AgentRail({ activeAgent }) {
   return (
-    <section className="architecture-board">
-      <div className="architecture-head">
-        <div>
-          <p>Agent Harness 架构运行态</p>
-          <h2>数据驱动 · 多智能体协同 · 广告算法内核 · 持续迭代优化</h2>
+    <section className="agent-rail">
+      {agentRoster.map((agent) => (
+        <div className={`agent-mini ${agent.color} ${activeAgent.name === agent.name ? 'active' : ''}`} key={agent.name}>
+          <Bot size={16} />
+          <div>
+            <strong>{agent.name}</strong>
+            <span>{agent.description}</span>
+          </div>
         </div>
-        <div className="kernel-pill"><Bot size={16} /> LLM 核心引擎 · {completion}% 就绪</div>
-      </div>
-
-      <div className="architecture-flow">
-        <div className="flow-column input">
-          <span>数据输入</span>
-          {dataInputs.map((item) => <b key={item}>{item}</b>)}
-        </div>
-        <div className="agent-cluster">
-          {agentModules.map((agent) => (
-            <article className={`agent-module ${agent.color}`} key={agent.name}>
-              <small>{agent.name}</small>
-              <strong>{agent.title}</strong>
-              <div>{agent.items.map((item) => <em key={item}>{item}</em>)}</div>
-              <p>输出：{agent.output}</p>
-            </article>
-          ))}
-        </div>
-        <div className="flow-column output">
-          <span>业务输出</span>
-          {businessOutputs.map((item) => <b key={item}>{item}</b>)}
-        </div>
-      </div>
-
-      <div className="harness-core">
-        <div className="core-orb">
-          <Sparkles size={21} />
-          <strong>LLM 编排层</strong>
-          <span>推理 · 规划 · 生成 · 决策</span>
-        </div>
-        <div className="capability-grid">
-          {harnessCapabilities.map((item) => <span key={item}>{item}</span>)}
-        </div>
-      </div>
-
-      <div className="tool-strip">
-        {toolServices.map((tool) => <span key={tool}>{tool}</span>)}
-      </div>
+      ))}
     </section>
   );
 }
@@ -462,6 +424,7 @@ function Message({ message, onConfirm }) {
     <article className={`message ${message.role} ${message.type || ''}`}>
       <div className="avatar">{message.role === 'agent' ? <Bot size={17} /> : <MessageCircle size={17} />}</div>
       <div className="bubble">
+        {message.agent && <div className="agent-badge">{message.agent}</div>}
         <p>{message.text}</p>
         {message.plan && <PlanCard plan={message.plan} onConfirm={onConfirm} />}
       </div>
