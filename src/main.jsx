@@ -87,6 +87,35 @@ const quickPrompts = [
   '我还没有素材，先帮我列出投放前必须补齐的信息。'
 ];
 
+const agentModules = [
+  {
+    name: 'Agent 1',
+    title: '用户建模智能体',
+    color: 'green',
+    items: ['画像建模', '意图识别', '商机预测', '转化概率'],
+    output: '用户画像 / 商业标签 / 价值评分'
+  },
+  {
+    name: 'Agent 2',
+    title: '广告匹配与 AI 销售智能体',
+    color: 'orange',
+    items: ['广告召回', '素材生成', '渠道匹配', '销售对话'],
+    output: '推荐广告 / 个性化素材 / 销售策略'
+  },
+  {
+    name: 'Agent 3',
+    title: '数据分析与系统迭代智能体',
+    color: 'blue',
+    items: ['全链路分析', 'A/B 实验', '策略评估', '迭代优化'],
+    output: '优化建议 / 模型反馈 / 策略版本'
+  }
+];
+
+const harnessCapabilities = ['任务编排与路由', '上下文管理', '工具调用管理', '权限与安全控制', '验证与评估', '观察与可观测性', '记忆与状态管理', '反馈与学习闭环'];
+const dataInputs = ['学习行为数据', '对话数据', '手机号授权数据', '广告主数据', '商品/服务库', '历史转化数据'];
+const toolServices = ['数据查询', '广告库', '商品库', '图像生成', '文案生成', 'CRM/客服', '支付/订单', 'A/B 测试', '消息通知'];
+const businessOutputs = ['个性化广告', 'AI 销售对话', '转化结果', '订单/支付', '用户反馈'];
+
 const starterMessages = [
   {
     role: 'agent',
@@ -236,6 +265,8 @@ function App() {
           })}
         </div>
 
+        <ArchitectureBoard completion={completion} />
+
         <section className="chat-window">
           <div className="message-list" ref={scrollRef}>
             {messages.map((message, index) => <Message key={`${message.role}-${index}`} message={message} onConfirm={confirmLaunch} />)}
@@ -348,10 +379,72 @@ function App() {
             </ResponsiveContainer>
           </div>
         </section>
+
+        <section className="recap-card compact">
+          <div className="recap-title">
+            <div>
+              <p>业务目标</p>
+              <h3>系统优化方向</h3>
+            </div>
+          </div>
+          <div className="goal-list">
+            {['点击率提升', '转化率提升', 'ROI 最大化', '用户体验提升', '长期价值提升'].map((goal) => <span key={goal}>{goal}</span>)}
+          </div>
+        </section>
       </aside>
 
       {toast && <div className="toast"><CheckCircle2 size={16} />{toast}</div>}
     </main>
+  );
+}
+
+function ArchitectureBoard({ completion }) {
+  return (
+    <section className="architecture-board">
+      <div className="architecture-head">
+        <div>
+          <p>Agent Harness 架构运行态</p>
+          <h2>数据驱动 · 多智能体协同 · 广告算法内核 · 持续迭代优化</h2>
+        </div>
+        <div className="kernel-pill"><Bot size={16} /> LLM 核心引擎 · {completion}% 就绪</div>
+      </div>
+
+      <div className="architecture-flow">
+        <div className="flow-column input">
+          <span>数据输入</span>
+          {dataInputs.map((item) => <b key={item}>{item}</b>)}
+        </div>
+        <div className="agent-cluster">
+          {agentModules.map((agent) => (
+            <article className={`agent-module ${agent.color}`} key={agent.name}>
+              <small>{agent.name}</small>
+              <strong>{agent.title}</strong>
+              <div>{agent.items.map((item) => <em key={item}>{item}</em>)}</div>
+              <p>输出：{agent.output}</p>
+            </article>
+          ))}
+        </div>
+        <div className="flow-column output">
+          <span>业务输出</span>
+          {businessOutputs.map((item) => <b key={item}>{item}</b>)}
+        </div>
+      </div>
+
+      <div className="harness-core">
+        <div className="core-orb">
+          <Sparkles size={21} />
+          <strong>LLM 编排层</strong>
+          <span>推理 · 规划 · 生成 · 决策</span>
+        </div>
+        <div className="capability-grid">
+          {harnessCapabilities.map((item) => <span key={item}>{item}</span>)}
+        </div>
+      </div>
+
+      <div className="tool-strip">
+        {toolServices.map((tool) => <span key={tool}>{tool}</span>)}
+      </div>
+    </section>
   );
 }
 
