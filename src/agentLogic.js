@@ -2,27 +2,27 @@ export const REQUIRED_FIELDS = [
   {
     key: 'productIntro',
     label: '产品介绍',
-    question: '请先用一句话介绍你要推广的产品：它是什么、卖点是什么、客单价大概多少？'
+    question: '先告诉我你要推广的产品是什么：核心卖点、价格区间、适合什么人群？'
   },
   {
     key: 'materials',
     label: '产品素材',
-    question: '请上传或说明你已有的素材类型：图片、视频、落地页、商品详情页都可以。'
+    question: '请把素材附加到输入框，或说明你已有的素材类型：图片、视频、落地页、PDF 都可以。'
   },
   {
     key: 'goal',
     label: '投放目标',
-    question: '这次投放的目标是什么：提升点击、获取线索、促进成交、召回老用户，还是提升复购？'
+    question: '这次投放目标更偏向哪一个：提升点击、获取线索、促进成交、召回老用户、提升复购？'
   },
   {
     key: 'interaction',
     label: '转化交互',
-    question: '用户点击广告后希望发生什么交互：加微信、电话回访、填写表单、App 内下单，还是邮件咨询？'
+    question: '用户点击广告后希望发生什么：加微信、电话回访、填写表单、App 内下单，还是邮件咨询？'
   },
   {
     key: 'channels',
     label: '投放渠道',
-    question: '希望投放到哪些渠道：微信销售、电话销售、邮箱、App 内广告？'
+    question: '你希望投放到哪些渠道：微信销售、电话销售、邮箱、App 内广告？'
   }
 ];
 
@@ -56,6 +56,16 @@ function unique(values) {
   return [...new Set(values.filter(Boolean))];
 }
 
+export function inferMaterialType(file) {
+  if (!file) return '';
+  const type = file.type || '';
+  const name = file.name || '';
+  if (type.startsWith('image/')) return '图片';
+  if (type.startsWith('video/')) return '视频';
+  if (type.includes('pdf') || name.toLowerCase().endsWith('.pdf')) return 'PDF';
+  return '素材文件';
+}
+
 export function analyzeBrief(text, existing = {}) {
   const source = `${existing.rawText || ''}\n${text || ''}`.trim();
   const extracted = {
@@ -68,7 +78,7 @@ export function analyzeBrief(text, existing = {}) {
   };
 
   if (source) {
-    if (!extracted.productIntro && /(产品|推广|卖|广告|净水器|课程|软件|服务|门店|品牌)/i.test(source)) {
+    if (!extracted.productIntro && /(产品|推广|卖|广告|净水器|课程|软件|服务|门店|品牌|会员|礼包)/i.test(source)) {
       extracted.productIntro = source.split(/[。！？\n]/).find(Boolean)?.slice(0, 88) || source.slice(0, 88);
     }
 
@@ -81,7 +91,7 @@ export function analyzeBrief(text, existing = {}) {
     const matchedChannels = channelPatterns.filter(([, words]) => hasAny(source, words)).map(([label]) => label);
     extracted.channels = unique([...extracted.channels, ...matchedChannels]);
 
-    const interactionMatch = source.match(/(加微信|微信私聊|电话回访|填写表单|表单留资|App 内下单|APP内下单|邮件咨询|私信咨询|在线咨询)/i);
+    const interactionMatch = source.match(/(加微信|微信私聊|电话回访|填写表单|表单留资|App 内下单|APP内下单|邮件咨询|私信咨询|在线咨询|领取优惠券)/i);
     if (!extracted.interaction && interactionMatch) extracted.interaction = interactionMatch[0];
   }
 
@@ -109,11 +119,11 @@ export function createLaunchPlan(extracted) {
     materials: extracted.materials || [],
     interaction: extracted.interaction,
     steps: [
-      `解析产品：${extracted.productIntro}`,
+      `解析产品与目标人群：${extracted.productIntro}`,
       `匹配素材：${(extracted.materials || []).join('、')}`,
-      `生成渠道策略：${(extracted.channels || []).join('、')}`,
-      `设置交互路径：${extracted.interaction}`,
-      '进入二次确认，确认后才会开始投放'
+      `生成渠道组合：${(extracted.channels || []).join('、')}`,
+      `设置转化交互：${extracted.interaction}`,
+      '等待用户二次确认，确认后才会开始投放'
     ],
     budgetSuggestion: 52000,
     forecast: {
@@ -130,7 +140,7 @@ export function getActiveAgent(analysis, phase = 'collecting') {
   if (phase === 'review') {
     return {
       name: '数据分析与系统迭代智能体',
-      description: '监控投放数据、识别异常、生成优化建议与复盘结论。',
+      description: '复盘投放数据、识别异常、生成优化建议。',
       tone: 'blue'
     };
   }
@@ -138,14 +148,14 @@ export function getActiveAgent(analysis, phase = 'collecting') {
   if (analysis?.ready) {
     return {
       name: '广告匹配与 AI 销售智能体',
-      description: '匹配广告素材、触达渠道、销售话术和二次确认方案。',
+      description: '匹配素材、渠道、销售话术和待确认方案。',
       tone: 'orange'
     };
   }
 
   return {
     name: '用户建模智能体',
-    description: '理解产品、目标、素材、交互与渠道，补齐投放必填信息。',
+    description: '理解产品、目标、素材、交互与渠道，补齐投放信息。',
     tone: 'green'
   };
 }

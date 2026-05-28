@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeBrief, createLaunchPlan, getActiveAgent, REQUIRED_FIELDS } from './agentLogic.js';
+import { analyzeBrief, createLaunchPlan, getActiveAgent, inferMaterialType, REQUIRED_FIELDS } from './agentLogic.js';
 
 describe('ad launch agent logic', () => {
-  it('asks follow-up questions when the user has not provided any required launch information', () => {
+  it('asks follow-up questions when the user has not provided launch information', () => {
     const result = analyzeBrief('');
 
     expect(result.ready).toBe(false);
     expect(result.missing).toEqual(REQUIRED_FIELDS.map((field) => field.key));
-    expect(result.questions).toContain('请先用一句话介绍你要推广的产品：它是什么、卖点是什么、客单价大概多少？');
+    expect(result.questions).toContain('先告诉我你要推广的产品是什么：核心卖点、价格区间、适合什么人群？');
   });
 
   it('extracts required launch signals from a natural language brief', () => {
@@ -38,5 +38,11 @@ describe('ad launch agent logic', () => {
     expect(getActiveAgent(empty).name).toBe('用户建模智能体');
     expect(getActiveAgent(ready).name).toBe('广告匹配与 AI 销售智能体');
     expect(getActiveAgent(ready, 'review').name).toBe('数据分析与系统迭代智能体');
+  });
+
+  it('infers material types from attached files', () => {
+    expect(inferMaterialType({ type: 'image/png', name: 'main.png' })).toBe('图片');
+    expect(inferMaterialType({ type: 'video/mp4', name: 'demo.mp4' })).toBe('视频');
+    expect(inferMaterialType({ type: 'application/pdf', name: 'faq.pdf' })).toBe('PDF');
   });
 });
