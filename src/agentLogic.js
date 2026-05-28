@@ -21,10 +21,12 @@ export const REQUIRED_FIELDS = [
   },
   {
     key: 'channels',
-    label: '投放渠道',
-    question: '你希望投放到哪些渠道：微信销售、电话销售、邮箱、App 内广告？'
+    label: '投放位置',
+    question: '投放位置默认全选电话 AI、微信 AI、App 内广告。你也可以指定只投其中某些位置，或额外加入邮箱。'
   }
 ];
+
+export const DEFAULT_CHANNELS = ['电话 AI', '微信 AI', 'App 内广告'];
 
 const goalPatterns = [
   ['获取线索', ['线索', '留资', '咨询', '获客']],
@@ -35,8 +37,8 @@ const goalPatterns = [
 ];
 
 const channelPatterns = [
-  ['微信销售', ['微信', '私域', '加微']],
-  ['电话销售', ['电话', '外呼', '回访']],
+  ['微信 AI', ['微信', '微信AI', '微信 AI', '私域', '加微']],
+  ['电话 AI', ['电话', '电话AI', '电话 AI', '外呼', '回访']],
   ['邮箱', ['邮箱', '邮件', 'email']],
   ['App 内广告', ['app', 'App', 'APP', '应用内', '站内']]
 ];
@@ -54,6 +56,14 @@ function hasAny(text, words) {
 
 function unique(values) {
   return [...new Set(values.filter(Boolean))];
+}
+
+function hasChannelContext(text) {
+  return /(渠道|投放位置|投放地方|触达位置|触达渠道|投放到|投到|投微信|投电话|投App|投 APP|走微信|走电话|走App|全选|全渠道|全部渠道|所有渠道|都投)/i.test(text);
+}
+
+function hasAllChannelsIntent(text) {
+  return /(全选|全渠道|全部渠道|所有渠道|都投|一般全选|默认全选)/i.test(text);
 }
 
 export function inferMaterialType(file) {
@@ -88,12 +98,18 @@ export function analyzeBrief(text, existing = {}) {
     const matchedGoal = goalPatterns.find(([, words]) => hasAny(source, words));
     if (!extracted.goal && matchedGoal) extracted.goal = matchedGoal[0];
 
-    const matchedChannels = channelPatterns.filter(([, words]) => hasAny(source, words)).map(([label]) => label);
-    extracted.channels = unique([...extracted.channels, ...matchedChannels]);
+    if (hasAllChannelsIntent(source)) {
+      extracted.channels = DEFAULT_CHANNELS;
+    } else if (hasChannelContext(source)) {
+      const matchedChannels = channelPatterns.filter(([, words]) => hasAny(source, words)).map(([label]) => label);
+      if (matchedChannels.length) extracted.channels = unique(matchedChannels);
+    }
 
     const interactionMatch = source.match(/(加微信|微信私聊|电话回访|填写表单|表单留资|App 内下单|APP内下单|邮件咨询|私信咨询|在线咨询|领取优惠券)/i);
     if (!extracted.interaction && interactionMatch) extracted.interaction = interactionMatch[0];
   }
+
+  if (!extracted.channels.length) extracted.channels = DEFAULT_CHANNELS;
 
   const missing = REQUIRED_FIELDS
     .filter((field) => {
@@ -112,16 +128,18 @@ export function analyzeBrief(text, existing = {}) {
 }
 
 export function createLaunchPlan(extracted) {
+  const channels = extracted.channels?.length ? extracted.channels : DEFAULT_CHANNELS;
+
   return {
     status: '等待二次确认',
     title: `${extracted.goal || '智能投放'} · ${extracted.productIntro || '未命名产品'}`.slice(0, 48),
-    channels: extracted.channels || [],
+    channels,
     materials: extracted.materials || [],
     interaction: extracted.interaction,
     steps: [
       `解析产品与目标人群：${extracted.productIntro}`,
       `匹配素材：${(extracted.materials || []).join('、')}`,
-      `生成渠道组合：${(extracted.channels || []).join('、')}`,
+      `生成投放位置组合：${channels.join('、')}`,
       `设置转化交互：${extracted.interaction}`,
       '等待用户二次确认，确认后才会开始投放'
     ],
@@ -148,14 +166,14 @@ export function getActiveAgent(analysis, phase = 'collecting') {
   if (analysis?.ready) {
     return {
       name: '广告匹配与 AI 销售智能体',
-      description: '匹配素材、渠道、销售话术和待确认方案。',
+      description: '匹配素材、投放位置、销售话术和待确认方案。',
       tone: 'orange'
     };
   }
 
   return {
     name: '用户建模智能体',
-    description: '理解产品、目标、素材、交互与渠道，补齐投放信息。',
+    description: '理解产品、目标、素材、交互与投放位置，补齐投放信息。',
     tone: 'green'
   };
 }

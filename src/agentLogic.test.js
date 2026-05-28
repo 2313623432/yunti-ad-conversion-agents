@@ -1,13 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeBrief, createLaunchPlan, getActiveAgent, inferMaterialType, REQUIRED_FIELDS } from './agentLogic.js';
+import { DEFAULT_CHANNELS, analyzeBrief, createLaunchPlan, getActiveAgent, inferMaterialType, REQUIRED_FIELDS } from './agentLogic.js';
 
 describe('ad launch agent logic', () => {
   it('asks follow-up questions when the user has not provided launch information', () => {
     const result = analyzeBrief('');
 
     expect(result.ready).toBe(false);
-    expect(result.missing).toEqual(REQUIRED_FIELDS.map((field) => field.key));
+    expect(result.missing).toEqual(REQUIRED_FIELDS.filter((field) => field.key !== 'channels').map((field) => field.key));
     expect(result.questions).toContain('先告诉我你要推广的产品是什么：核心卖点、价格区间、适合什么人群？');
+  });
+
+  it('defaults delivery channels to all core placements when the user has not specified them', () => {
+    const result = analyzeBrief('产品是智能净水器，有图片和视频素材，目标促进成交，用户点击后加微信咨询。');
+
+    expect(result.ready).toBe(true);
+    expect(result.extracted.channels).toEqual(DEFAULT_CHANNELS);
   });
 
   it('extracts required launch signals from a natural language brief', () => {
@@ -17,7 +24,7 @@ describe('ad launch agent logic', () => {
     expect(result.extracted.productIntro).toContain('净水器');
     expect(result.extracted.materials).toEqual(['图片', '视频']);
     expect(result.extracted.goal).toBe('获取线索');
-    expect(result.extracted.channels).toEqual(['微信销售', '电话销售', 'App 内广告']);
+    expect(result.extracted.channels).toEqual(['微信 AI', '电话 AI', 'App 内广告']);
     expect(result.extracted.interaction).toContain('加微信');
   });
 
@@ -27,7 +34,7 @@ describe('ad launch agent logic', () => {
 
     expect(plan.status).toBe('等待二次确认');
     expect(plan.steps[0]).toContain('解析产品');
-    expect(plan.channels).toEqual(['微信销售', 'App 内广告']);
+    expect(plan.channels).toEqual(['微信 AI', 'App 内广告']);
     expect(plan.confirmButton).toBe('确认并开始投放');
   });
 

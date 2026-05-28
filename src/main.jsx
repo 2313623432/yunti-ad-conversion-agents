@@ -40,8 +40,9 @@ import {
   X,
   Zap
 } from 'lucide-react';
-import { buildChatRequest, isAIConfigReady, requestRemoteAI, summarizeAttachment } from './aiClient.js';
+import { DEFAULT_AI_PROXY_URL, buildChatRequest, isAIConfigReady, requestRemoteAI, summarizeAttachment } from './aiClient.js';
 import { analyzeBrief, createLaunchPlan, getActiveAgent, inferMaterialType, REQUIRED_FIELDS } from './agentLogic.js';
+import { armLaunchConfirmation, createCampaignFromConfirmedPlan, createRevisionPrompt } from './demoFlow.js';
 import './styles.css';
 
 const reviewTrend = [
@@ -62,8 +63,8 @@ const userFeatureData = [
 ];
 
 const channelData = [
-  { name: '微信', value: 416 },
-  { name: '电话', value: 192 },
+  { name: '微信 AI', value: 416 },
+  { name: '电话 AI', value: 192 },
   { name: '邮箱', value: 133 },
   { name: 'App', value: 531 }
 ];
@@ -83,10 +84,10 @@ const funnelRows = [
 ];
 
 const audienceMatrix = [
-  ['高意向家庭', '微信销售', '18.6%', '优先'],
+  ['高意向家庭', '微信 AI', '18.6%', '优先'],
   ['价格敏感', '优惠券素材', '15.4%', '放量'],
-  ['复购潜力', '邮箱 + 微信', '9.8%', '召回'],
-  ['流失风险', '电话回访', '6.1%', '降频']
+  ['复购潜力', 'App 内广告 + 微信 AI', '9.8%', '召回'],
+  ['流失风险', '电话 AI 回访', '6.1%', '降频']
 ];
 
 const diagnostics = [
@@ -102,19 +103,19 @@ const initialCampaigns = [
     title: '618 新客线索加速',
     status: '投放中',
     goal: '获取线索',
-    channels: ['微信销售', 'App 内广告'],
+    channels: ['微信 AI', '电话 AI', 'App 内广告'],
     spend: 31420,
     budget: 80000,
     roi: 5.3,
     leads: 932,
-    insight: '高意向家庭用户进入微信销售后，成交率比电话渠道高 21%。'
+    insight: '高意向家庭用户进入微信 AI 后，成交率比电话 AI 高 21%。'
   },
   {
     id: 'RUN-RET',
     title: '老客复购召回',
     status: '投放中',
     goal: '提升复购',
-    channels: ['邮箱', '微信销售'],
+    channels: ['微信 AI', '电话 AI', 'App 内广告'],
     spend: 9860,
     budget: 36000,
     roi: 3.8,
@@ -126,7 +127,7 @@ const initialCampaigns = [
     title: '高客单价咨询转化复盘',
     status: '已结束',
     goal: '促进成交',
-    channels: ['电话销售', '微信销售'],
+    channels: ['电话 AI', '微信 AI', 'App 内广告'],
     spend: 52200,
     budget: 52000,
     roi: 4.6,
@@ -136,8 +137,8 @@ const initialCampaigns = [
 ];
 
 const quickPrompts = [
-  '推广智能净水器，目标促进成交，有图片和视频素材，投微信销售和 App 内广告，点击后加微信私聊。',
-  '帮我做老客复购召回，产品是会员礼包，有海报和详情页，渠道用邮箱和微信，点击后领取优惠券。',
+  '推广智能净水器，目标促进成交，有图片和视频素材，投放位置默认全选，点击后加微信私聊。',
+  '帮我做老客复购召回，产品是会员礼包，有海报和详情页，投放位置用微信 AI、电话 AI 和 App 内广告，点击后领取优惠券。',
   '我还没有素材，先帮我列出要准备哪些素材和信息。'
 ];
 
@@ -150,7 +151,7 @@ const agentRoster = [
   {
     name: '广告匹配与 AI 销售智能体',
     color: 'orange',
-    description: '生成素材、渠道与话术方案'
+    description: '生成素材、投放位置与话术方案'
   },
   {
     name: '数据分析与系统迭代智能体',
@@ -187,13 +188,16 @@ function App() {
   const [isThinking, setIsThinking] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [aiConfig, setAiConfig] = useState({
-    useRemote: false,
-    baseUrl: 'https://api.openai.com/v1',
-    model: 'gpt-4.1-mini',
+    useRemote: true,
+    transport: 'proxy',
+    proxyUrl: DEFAULT_AI_PROXY_URL || '/api/chat',
+    baseUrl: 'https://platform.deepseek.com',
+    model: 'deepseek-chat',
     apiKey: ''
   });
   const scrollRef = useRef(null);
   const fileRef = useRef(null);
+  const inputRef = useRef(null);
 
   const analysis = useMemo(() => analyzeBrief('', { ...brief, materials }), [brief, materials]);
   const completion = Math.round(((REQUIRED_FIELDS.length - analysis.missing.length) / REQUIRED_FIELDS.length) * 100);
@@ -209,6 +213,12 @@ function App() {
   const showToast = (text) => {
     setToast(text);
     window.setTimeout(() => setToast(''), 2600);
+  };
+
+  const updatePlanMessage = (nextPlan) => {
+    setMessages((current) => current.map((message) => (
+      message.plan ? { ...message, plan: nextPlan } : message
+    )));
   };
 
   const addFiles = (files) => {
@@ -281,25 +291,37 @@ function App() {
     }
   };
 
+  const requestLaunchConfirmation = () => {
+    if (!pendingPlan) return;
+    const armedPlan = armLaunchConfirmation(pendingPlan);
+    setPendingPlan(armedPlan);
+    updatePlanMessage(armedPlan);
+    showToast('请在方案卡片中完成二次确认。');
+  };
+
   const confirmLaunch = () => {
     if (!pendingPlan) return;
-    const newCampaign = {
-      id: `RUN-AI-${campaigns.length + 1}`,
-      title: pendingPlan.title,
-      status: '投放中',
-      goal: brief.goal,
-      channels: pendingPlan.channels,
-      spend: 0,
-      budget: pendingPlan.budgetSuggestion,
-      roi: 0,
-      leads: 0,
-      insight: '新计划进入学习期，系统将在 2 小时后生成第一轮复盘。'
-    };
+    const newCampaign = createCampaignFromConfirmedPlan({
+      plan: pendingPlan,
+      brief,
+      campaignsCount: campaigns.length
+    });
     setCampaigns((current) => [newCampaign, ...current]);
     setSelectedCampaign(newCampaign);
     setPendingPlan(null);
-    pushMessages([{ role: 'agent', agent: reviewAgent.name, type: 'success', text: `已确认，${newCampaign.title} 已开始投放。右侧复盘区会持续更新人群、素材、渠道和 ROI 变化。` }]);
+    pushMessages([{ role: 'agent', agent: reviewAgent.name, type: 'success', text: `已确认，${newCampaign.title} 已开始投放。右侧复盘区会持续更新人群、素材、投放位置和 ROI 变化。` }]);
     showToast('投放已开始，复盘区已加入新任务。');
+  };
+
+  const reviseLaunchPlan = () => {
+    if (!pendingPlan) return;
+    const prompt = createRevisionPrompt(pendingPlan);
+    const revisionPlan = { ...pendingPlan, status: '等待修改', confirmState: 'revision' };
+    setPendingPlan(null);
+    updatePlanMessage(revisionPlan);
+    setInput(prompt);
+    pushMessages([{ role: 'agent', agent: '广告匹配与 AI 销售智能体', text: '已进入修改模式。请在输入框里补充你要调整的内容，我会重新生成方案。' }]);
+    window.setTimeout(() => inputRef.current?.focus(), 80);
   };
 
   const toggleCampaign = (id) => {
@@ -342,7 +364,7 @@ function App() {
           <div className="mission-metrics">
             <Kpi label="信息完整度" value={`${completion}%`} />
             <Kpi label="待补信息" value={missingLabels.length ? `${missingLabels.length} 项` : '已齐'} />
-            <Kpi label="AI 模式" value={aiConfig.useRemote && isAIConfigReady(aiConfig) ? '真实 AI' : '本地模拟'} />
+            <Kpi label="AI 模式" value={aiConfig.useRemote && isAIConfigReady(aiConfig) ? '真实 AI' : '待配置'} />
           </div>
         </div>
 
@@ -352,7 +374,15 @@ function App() {
 
         <section className="chat-window">
           <div className="message-list" ref={scrollRef}>
-            {messages.map((message, index) => <Message key={`${message.role}-${index}`} message={message} onConfirm={confirmLaunch} />)}
+            {messages.map((message, index) => (
+              <Message
+                key={`${message.role}-${index}`}
+                message={message}
+                onPrepareConfirm={requestLaunchConfirmation}
+                onConfirm={confirmLaunch}
+                onRevise={reviseLaunchPlan}
+              />
+            ))}
             {isThinking && <Thinking agent={activeAgent.name} />}
           </div>
 
@@ -380,6 +410,7 @@ function App() {
 
             <label className="input-shell">
               <textarea
+                ref={inputRef}
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 placeholder="描述投放需求，也可以先上传素材再补充说明。例如：这是新品净水器素材，想投微信和 App，点击后加微信私聊..."
@@ -474,7 +505,7 @@ function App() {
         </section>
 
         <section className="data-card">
-          <PanelHeader title="渠道与素材" subtitle="线索贡献 / 素材排行" icon={Radar} />
+          <PanelHeader title="投放位置与素材" subtitle="线索贡献 / 素材排行" icon={Radar} />
           <div className="bar-shell">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={channelData}>
@@ -519,14 +550,23 @@ function App() {
 }
 
 function ModelConfig({ config, setConfig }) {
+  const ready = config.useRemote && isAIConfigReady(config);
+
   return (
     <section className="model-config">
       <div className="config-title"><KeyRound size={16} />真实 AI 接入配置</div>
       <label><span>启用真实 AI</span><input type="checkbox" checked={config.useRemote} onChange={(event) => setConfig((current) => ({ ...current, useRemote: event.target.checked }))} /></label>
-      <label><span>接口地址</span><input value={config.baseUrl} onChange={(event) => setConfig((current) => ({ ...current, baseUrl: event.target.value }))} placeholder="https://api.openai.com/v1" /></label>
-      <label><span>模型</span><input value={config.model} onChange={(event) => setConfig((current) => ({ ...current, model: event.target.value }))} placeholder="gpt-4.1-mini" /></label>
+      <div className="segmented-control">
+        <button className={config.transport === 'proxy' ? 'active' : ''} onClick={() => setConfig((current) => ({ ...current, transport: 'proxy' }))}>代理模式</button>
+        <button className={config.transport === 'direct' ? 'active' : ''} onClick={() => setConfig((current) => ({ ...current, transport: 'direct' }))}>浏览器直连</button>
+      </div>
+      {config.transport === 'proxy' && (
+        <label><span>代理地址</span><input value={config.proxyUrl} onChange={(event) => setConfig((current) => ({ ...current, proxyUrl: event.target.value }))} placeholder="https://your-app.vercel.app/api/chat" /></label>
+      )}
+      <label><span>模型接口</span><input value={config.baseUrl} onChange={(event) => setConfig((current) => ({ ...current, baseUrl: event.target.value }))} placeholder="https://platform.deepseek.com" /></label>
+      <label><span>模型</span><input value={config.model} onChange={(event) => setConfig((current) => ({ ...current, model: event.target.value }))} placeholder="deepseek-chat" /></label>
       <label><span>API Key</span><input type="password" value={config.apiKey} onChange={(event) => setConfig((current) => ({ ...current, apiKey: event.target.value }))} placeholder="只保存在当前页面状态中" /></label>
-      <p>浏览器直连第三方接口可能遇到 CORS；生产环境建议走自己的后端代理。</p>
+      <p>{ready ? '配置完整，下一条消息会调用真实模型。DeepSeek 的 platform 地址会自动转为 api.deepseek.com。' : 'GitHub Pages 必须使用代理模式，否则浏览器会被 CORS 拦截。请填写代理地址和 API Key。'}</p>
     </section>
   );
 }
@@ -551,7 +591,7 @@ function Requirement({ label, done }) {
   return <div className={`requirement ${done ? 'done' : ''}`}>{done ? <CheckCircle2 size={13} /> : <ChevronDown size={13} />}<span>{label}</span></div>;
 }
 
-function Message({ message, onConfirm }) {
+function Message({ message, onPrepareConfirm, onConfirm, onRevise }) {
   return (
     <article className={`message ${message.role} ${message.type || ''}`}>
       <div className="avatar">{message.role === 'agent' ? <Bot size={17} /> : <MessageCircle size={17} />}</div>
@@ -559,7 +599,7 @@ function Message({ message, onConfirm }) {
         {message.agent && <div className="agent-badge">{message.agent}</div>}
         <p>{message.text}</p>
         {message.attachments?.length > 0 && <div className="message-attachments">{message.attachments.map((file) => <AttachmentPreview key={file.id} file={file} />)}</div>}
-        {message.plan && <PlanCard plan={message.plan} onConfirm={onConfirm} />}
+        {message.plan && <PlanCard plan={message.plan} onPrepareConfirm={onPrepareConfirm} onConfirm={onConfirm} onRevise={onRevise} />}
       </div>
     </article>
   );
@@ -574,7 +614,10 @@ function Thinking({ agent }) {
   );
 }
 
-function PlanCard({ plan, onConfirm }) {
+function PlanCard({ plan, onPrepareConfirm, onConfirm, onRevise }) {
+  const armed = plan.confirmState === 'armed';
+  const revision = plan.confirmState === 'revision';
+
   return (
     <div className="plan-card">
       <div className="plan-head">
@@ -591,9 +634,23 @@ function PlanCard({ plan, onConfirm }) {
         <Kpi label="预计 ROI" value={plan.forecast.roi} />
       </div>
       <ul>{plan.steps.map((step) => <li key={step}>{step}</li>)}</ul>
+      {armed && (
+        <div className="confirm-gate">
+          <ShieldCheck size={16} />
+          <span>二次确认：确认后将创建运行中投放任务，并进入右侧复盘队列。</span>
+        </div>
+      )}
+      {revision && (
+        <div className="confirm-gate muted">
+          <AlertTriangle size={16} />
+          <span>这份方案正在修改中，请在输入框提交新的调整要求。</span>
+        </div>
+      )}
       <div className="plan-actions">
-        <button onClick={onConfirm}><Zap size={16} /> {plan.confirmButton}</button>
-        <button className="ghost"><AlertTriangle size={16} />继续修改</button>
+        {!revision && (
+          <button onClick={armed ? onConfirm : onPrepareConfirm}><Zap size={16} /> {plan.confirmButton}</button>
+        )}
+        {!revision && <button className="ghost" onClick={onRevise}><AlertTriangle size={16} />继续修改</button>}
       </div>
     </div>
   );

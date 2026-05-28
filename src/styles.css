@@ -275,7 +275,7 @@ button:hover {
 
 .model-config {
   display: grid;
-  grid-template-columns: 1.1fr 0.8fr 0.8fr 1.2fr;
+  grid-template-columns: 0.9fr 1fr 1.4fr 1fr 1.2fr;
   gap: 10px;
   padding: 12px;
   border: 1px solid rgba(122, 167, 255, 0.25);
@@ -310,9 +310,39 @@ button:hover {
   outline: none;
 }
 
+.model-config label:nth-of-type(3) {
+  grid-column: span 2;
+}
+
 .model-config input[type="checkbox"] {
   width: 18px;
   accent-color: var(--green);
+}
+
+.segmented-control {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-self: end;
+  height: 36px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.segmented-control button {
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.segmented-control button.active {
+  color: #031014;
+  background: linear-gradient(135deg, var(--green), var(--blue));
+  box-shadow: 0 10px 24px rgba(64, 245, 200, 0.18);
 }
 
 .model-config p {
@@ -606,6 +636,25 @@ button:hover {
   margin: 10px 0 0;
   padding-left: 18px;
   color: #c5d5e8;
+}
+
+.confirm-gate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(64, 245, 200, 0.26);
+  border-radius: 12px;
+  background: rgba(64, 245, 200, 0.08);
+  color: #d9fff5;
+  font-size: 12px;
+}
+
+.confirm-gate.muted {
+  border-color: rgba(251, 191, 36, 0.26);
+  background: rgba(251, 191, 36, 0.08);
+  color: #f8e7b8;
 }
 
 .plan-actions {

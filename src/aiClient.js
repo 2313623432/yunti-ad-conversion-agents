@@ -1,9 +1,41 @@
+const envProxyUrl = import.meta.env?.VITE_AI_PROXY_URL || '';
+
+export const DEFAULT_AI_PROXY_URL = envProxyUrl || 'https://yunti-ad-conversion-agents.vercel.app/api/chat';
+
 export function normalizeBaseUrl(baseUrl = '') {
   return baseUrl.trim().replace(/\/+$/, '');
 }
 
-export function isAIConfigReady(config) {
-  return Boolean(normalizeBaseUrl(config?.baseUrl) && config?.model?.trim() && config?.apiKey?.trim());
+export function normalizeProviderBaseUrl(baseUrl = '') {
+  const normalized = normalizeBaseUrl(baseUrl);
+  if (!normalized) return '';
+
+  try {
+    const url = new URL(normalized);
+    if (url.hostname === 'platform.deepseek.com') {
+      return 'https://api.deepseek.com';
+    }
+  } catch {
+    return normalized;
+  }
+
+  return normalized;
+}
+
+export function resolveChatEndpoint(baseUrl = '') {
+  const normalized = normalizeProviderBaseUrl(baseUrl);
+  if (!normalized) return '';
+  return normalized.endsWith('/chat/completions') ? normalized : `${normalized}/chat/completions`;
+}
+
+export function resolveProxyUrl(config = {}) {
+  return normalizeBaseUrl(config.proxyUrl || DEFAULT_AI_PROXY_URL);
+}
+
+export function isAIConfigReady(config = {}) {
+  const hasModelTarget = Boolean(normalizeProviderBaseUrl(config.baseUrl) && config.model?.trim() && config.apiKey?.trim());
+  if (config.transport === 'proxy') return Boolean(hasModelTarget && resolveProxyUrl(config));
+  return hasModelTarget;
 }
 
 export function summarizeAttachment(file) {
@@ -49,22 +81,60 @@ export function buildChatRequest({ model, activeAgent, conversation, missingLabe
   };
 }
 
+async function readErrorText(response) {
+  const text = await response.text();
+  try {
+    const json = JSON.parse(text);
+    return json.error?.message || json.error || json.message || text;
+  } catch {
+    return text;
+  }
+}
+
+function getResponseText(data) {
+  return data?.choices?.[0]?.message?.content
+    || data?.choices?.[0]?.text
+    || data?.message
+    || 'AI 已返回，但没有可展示的文本。';
+}
+
 export async function requestRemoteAI(config, requestBody) {
-  const endpoint = `${normalizeBaseUrl(config.baseUrl)}/chat/completions`;
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.apiKey}`
-    },
-    body: JSON.stringify(requestBody)
-  });
+  const useProxy = config.transport === 'proxy';
+  const endpoint = useProxy ? resolveProxyUrl(config) : resolveChatEndpoint(config.baseUrl);
+  const fetchOptions = useProxy
+    ? {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseUrl: normalizeProviderBaseUrl(config.baseUrl),
+          apiKey: config.apiKey,
+          requestBody
+        })
+      }
+    : {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.apiKey}`
+        },
+        body: JSON.stringify(requestBody)
+      };
+
+  let response;
+  try {
+    response = await fetch(endpoint, fetchOptions);
+  } catch (error) {
+    if (!useProxy && error instanceof TypeError) {
+      throw new Error('浏览器直连模型接口被跨域策略拦截。请切换到“代理模式”，通过自己的 /api/chat 接口请求模型。');
+    }
+    throw error;
+  }
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`AI 请求失败：${response.status} ${text.slice(0, 120)}`);
+    const text = await readErrorText(response);
+    throw new Error(`AI 请求失败：${response.status} ${text.slice(0, 180)}`);
   }
 
   const data = await response.json();
-  return data?.choices?.[0]?.message?.content || 'AI 已返回，但没有可展示的文本。';
+  return getResponseText(data);
 }
